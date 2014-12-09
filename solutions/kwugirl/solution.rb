@@ -6,23 +6,46 @@
 
 COUNTS = Hash.new{|h,k| h[k] = 0}
 
-String.class_eval do
-  def to_s_with_counting
-    COUNTS['to_s'] += 1
-    to_s_without_counting
+class MethodSignature
+  attr_accessor :klass, :klass_name, :scope, :method, :to_s
+
+  def initialize(string)
+    @to_s = string.to_s
+    @klass_name, @scope, @method = string.to_s.split(/([#.])/)
   end
 
-  alias :to_s_without_counting :to_s
-  alias :to_s :to_s_with_counting
+  def klass
+    # from a string, goes down from Object to find the actual class
+    @klass ||= begin
+      @klass_name.split('::').inject(Object){|n,i| n.const_get(i)}
+    rescue NameError => e
+    end
+  end
 end
+
+def signature
+  @signature ||= MethodSignature.new("String#to_s")
+end
+
+method = signature.method
+
+signature.klass.class_eval <<-RB
+  def #{method}_with_counting
+    COUNTS[#{method}] += 1
+    #{method}_without_counting
+  end
+
+  alias :#{method}_without_counting :#{method}
+  alias :#{method} :#{method}_with_counting
+RB
 
 # Print our report at exit.
 at_exit do
-  puts "String#to_s called #{COUNTS['to_s']} times"
+  puts "#{signature} called #{COUNTS['#{method}']} times"
 end
 
 # next: generalize to all standard library/class methods
 # - parse different kinds of method signatures
 # - set up the class_eval method to interpolate from parsed out method signature
-# How to read environment variable given at command line?
+# How to read environment variable given at command line? ENV['COUNT_CALLS_TO']
 
